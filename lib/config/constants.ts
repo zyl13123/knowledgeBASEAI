@@ -12,7 +12,7 @@ export const CONFIG = {
   // Gemini 模型
   EMBEDDING_MODEL: 'gemini-embedding-001',  // embedding 用的模型
   // lib/config/constants.ts
-  CHAT_MODEL: 'gemini-2.5-flash'   // 3.6 换成 2.5
+  CHAT_MODEL: 'gemini-2.5-flash',   // 3.6 换成 2.5
  // 当前新用户可用的最新免费模型
 
   //历史对话取最后几个
