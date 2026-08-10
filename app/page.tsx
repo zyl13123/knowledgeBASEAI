@@ -59,6 +59,7 @@ export default function Home() {
   const [seeding, setSeeding] = useState(false)
   const [seedResult, setSeedResult] = useState('')
   const [showSeed, setShowSeed] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   // 新消息来了自动滚到底部
   useEffect(() => {
@@ -247,7 +248,17 @@ export default function Home() {
   return (
     <div className="h-screen flex flex-col bg-neutral-50 text-neutral-900">
       {/* ===== 顶栏 ===== */}
-      <header className="h-14 shrink-0 border-b border-neutral-200 bg-white/80 backdrop-blur flex items-center px-6">
+      <header className="h-14 shrink-0 border-b border-neutral-200 bg-white/80 backdrop-blur flex items-center px-4 md:px-6">
+        {/* 手机端：汉堡按钮 */}
+        <button
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          className="md:hidden p-1.5 mr-2 rounded-lg hover:bg-neutral-100"
+          aria-label="菜单"
+        >
+          <span className="block w-5 h-0.5 bg-neutral-600 mb-1" />
+          <span className="block w-5 h-0.5 bg-neutral-600 mb-1" />
+          <span className="block w-5 h-0.5 bg-neutral-600" />
+        </button>
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg bg-neutral-900 flex items-center justify-center">
             <Library className="w-4 h-4 text-white" />
@@ -269,7 +280,13 @@ export default function Home() {
       {/* ===== 主体：左知识库 + 右聊天 ===== */}
       <div className="flex-1 flex overflow-hidden">
         {/* -------- 左栏：知识库 -------- */}
-        <aside className="w-80 shrink-0 border-r border-neutral-200 bg-white flex flex-col overflow-hidden">
+        <aside className={`
+          fixed md:relative inset-y-0 left-0 z-40 w-72 md:w-80 shrink-0
+          border-r border-neutral-200 bg-white flex flex-col overflow-hidden
+          transition-transform duration-200
+          ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
+          md:translate-x-0
+        `}>
           {/* 上传区 */}
           <div className="p-4 border-b border-neutral-100">
             <div className="p-5 rounded-xl border-2 border-dashed border-neutral-200 hover:border-neutral-400 hover:bg-neutral-50 transition-colors">
@@ -374,10 +391,18 @@ export default function Home() {
           </div>
         </aside>
 
+        {/* 手机端遮罩层 */}
+        {mobileMenuOpen && (
+          <div
+            className="md:hidden fixed inset-0 z-30 bg-black/30"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+        )}
+
         {/* -------- 右栏：聊天 -------- */}
         <main className="flex-1 flex flex-col overflow-hidden bg-white">
           {/* 聊天头部 */}
-          <div className="shrink-0 px-8 py-4 border-b border-neutral-100 flex items-center justify-between">
+          <div className="shrink-0 px-4 md:px-8 py-4 border-b border-neutral-100 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-neutral-800 flex items-center gap-2">
               <span className="w-6 h-6 rounded-lg bg-neutral-100 flex items-center justify-center">
                 <MessageSquare className="w-3.5 h-3.5 text-neutral-500" />
@@ -389,7 +414,7 @@ export default function Home() {
 
           {/* 消息区 */}
           <div ref={chatScrollRef} className="flex-1 overflow-y-auto">
-            <div className="max-w-5xl mx-auto px-8 py-10 space-y-8">
+            <div className="max-w-5xl mx-auto px-4 md:px-8 py-6 md:py-10 space-y-6 md:space-y-8">
               {messages.length === 0 && (
                 <div className="text-center pt-28">
                   <div className="w-16 h-16 mx-auto rounded-2xl bg-neutral-100 flex items-center justify-center mb-6">
@@ -491,7 +516,7 @@ export default function Home() {
           </div>
 
           {/* 输入区 */}
-          <div className="shrink-0 px-8 py-4">
+          <div className="shrink-0 px-4 md:px-8 py-3 md:py-4">
             <div className="max-w-5xl mx-auto">
               <div className="flex gap-2.5 items-end rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-2.5 focus-within:border-neutral-400 transition-colors">
                 <textarea
