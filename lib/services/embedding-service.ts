@@ -9,7 +9,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
   const result = await model.embedContent({
     content: { parts: [{ text }], role: 'user' },
     outputDimensionality: 768,
-  })
+  }as any)
   return result.embedding.values
 }
 
@@ -22,7 +22,7 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
       model.embedContent({
         content: { parts: [{ text }], role: 'user' },
         outputDimensionality: 768,
-      })
+      }as any)
     )
   )
   return results.map((r) => r.embedding.values)
