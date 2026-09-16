@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/db/supabase-admin'
-import { generateEmbedding } from '@/lib/services/embedding-service'
-import { CONFIG } from '@/lib/config/constants'
+import { processText } from '@/lib/services/document-service'   // ← 复用
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,43 +10,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '标题和内容不能为空' }, { status: 400 })
     }
 
-    // 1. 往 documents 表插入一条文档记录
+    // 1. 插 documents 记录
     const { data: doc, error: docError } = await supabaseAdmin
       .from('documents')
-      .insert({ title, file_type: 'text', file_size: text.length, status: 'completed' })
+      .insert({
+        title,
+        file_type: 'text',
+        file_size: text.length,
+        status: 'processing',
+      })
       .select()
       .single()
 
     if (docError) throw docError
+    if (!doc) throw new Error('插入文档失败：未返回数据')
 
-    // 2. 把文本切块
-    const chunks: string[] = []
-    for (let i = 0; i < text.length; i += CONFIG.CHUNK_SIZE) {
-      const start = Math.max(0, i - CONFIG.CHUNK_OVERLAP)
-      const end = i + CONFIG.CHUNK_SIZE
-      chunks.push(text.slice(start, end))
-    }
+    // 2. 复用 processText，完事
+    await processText(doc.id, text, title)
 
-    // 3. 逐块转向量，插入 document_chunks 表
-    for (let i = 0; i < chunks.length; i++) {
-      const embedding = await generateEmbedding(chunks[i])
-      await supabaseAdmin.from('document_chunks').insert({
-        document_id: doc.id,
-        content: chunks[i],
-        position: i,
-        embedding,
-        token_count: chunks[i].length,
-      })
-    }
-
-    // 4. 更新文档的分块数量
-    await supabaseAdmin
-      .from('documents')
-      .update({ chunk_count: chunks.length })
-      .eq('id', doc.id)
-
-    return NextResponse.json({ success: true, chunk_count: chunks.length })
+    return NextResponse.json({ success: true, docId: doc.id })
   } catch (error) {
+    console.error('seed 插入失败:', error)
     return NextResponse.json(
       { error: error instanceof Error ? error.message : '插入失败' },
       { status: 500 }

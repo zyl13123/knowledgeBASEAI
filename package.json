@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@node-rs/jieba": "^2.0.3",
     "@supabase/supabase-js": "^2.112.0",
     "lucide-react": "^1.28.0",
     "mammoth": "^1.12.0",

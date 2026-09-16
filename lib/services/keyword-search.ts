@@ -7,7 +7,7 @@ export interface KeywordHit {
   id: string
   document_id: string
   content: string
-  position: number
+  chunk_index: number      // 🆕 从 position 改名
   hit_count: number
   document_title: string
 }

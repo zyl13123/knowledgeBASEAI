@@ -19,5 +19,11 @@ export const CONFIG = {
   REWRITE_HISTORY_TURNS:4,
   
   //选出几个chunk
-  RERANK_TOP_K: 3
+  RERANK_TOP_K: 3,
+
+  // 多跳规划
+  PLANNER_MAX_SUBQUERIES: 4,   // 最多拆几个子问题
+  PLANNER_TOP_K: 3,            // 每个子问题检索后保留几块
+  MULTI_HOP_MAX_CHUNKS: 9,     // 合并后最多保留几块（送进 reranker）
+
 }

@@ -27,9 +27,11 @@ export async function hybridSearch(
   // ① 向量通道：问题 → embedding → 粗召回 CANDIDATE_POOL 个
   const embedding = await generateEmbedding(question)
   const vectorResults = await searchSimilarChunks(embedding, CONFIG.CANDIDATE_POOL)
-
+  
   // ② 关键词通道：ILIKE 匹配 → 同样取 CANDIDATE_POOL 个
   const keywordResults = keywords.length ? await searchByKeywords(keywords) : []
+  
+  
 
   // ③ RRF 融合：用 Map 按块 id 聚合，记录每块在哪些通道拿了什么名次
   // Map 的 key 是块 id，value 是块信息 + 名次数组

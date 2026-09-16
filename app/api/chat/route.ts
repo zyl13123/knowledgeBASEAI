@@ -4,6 +4,9 @@ import { rerankChunks } from '@/lib/services/reranker'
 import { generateAnswerStream, type ChatMessage } from '@/lib/services/chat-service'
 import { hybridSearch } from '@/lib/services/hybrid-service'
 import { rewriteQuery } from '@/lib/services/query-rewriter'
+import { multiHopSearch } from '@/lib/services/planner'
+import { isComplexQuery } from '@/lib/services/router'
+
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,16 +18,26 @@ export async function POST(request: NextRequest) {
     if (!question) {
       return new Response('问题不能为空', { status: 400 })
     }
-
-    // 2. 查询改写：LLM 把追问还原成独立问句 + 提取关键词
+  
+    
     const { standalone_question, keywords } = await rewriteQuery(question, history)
 
-  
-        // 3. 混合检索：粗召回 20 个候选块
-    const candidates = await hybridSearch(standalone_question, keywords)
+// 3. 判断是否是复杂问题
+    const isComplex = isComplexQuery(standalone_question)
 
-    // 4. 重排：从 20 个候选里精排出最相关的 3 个
+    let candidates: HybridCandidate[]
+
+    if (isComplex) {
+      // 复杂：拆子问题 → 并行检索 → 合并
+      candidates = await multiHopSearch(standalone_question, keywords)
+    } else {
+      // 简单：混合检索
+      candidates = await hybridSearch(standalone_question, keywords)
+    }
+
+    // 4. 重排
     const chunks = await rerankChunks(standalone_question, candidates)
+
 
 
 
@@ -89,6 +102,8 @@ function sseHeaders() {
     Connection: 'keep-alive',
   }
 }
+
+
 
 
 

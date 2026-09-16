@@ -1,6 +1,9 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { CONFIG } from '@/lib/config/constants'
 import type { ChatMessage } from './chat-service'
+import { load, extract } from '@node-rs/jieba'
+
+load()
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
 
@@ -24,7 +27,7 @@ export async function rewriteQuery(
   if (!historyText) {
     return {
       standalone_question: question,
-      keywords: extractKeywordsFallback(question),
+      keywords: extractKeywords(question),
     }
   }
 
@@ -61,19 +64,13 @@ ${historyText}
     console.error('查询改写失败，降级为原始问题:', error)
     return {
       standalone_question: question,
-      keywords: extractKeywordsFallback(question),
+      keywords: extractKeywords(question),
     }
   }
 }
 
 // 降级用：从 route.ts 搬过来的标点切词
-function extractKeywordsFallback(question: string): string[] {
-  const stopwords = new Set([
-    '的', '了', '吗', '呢', '什么', '怎么', '如何', '是', '在', '有',
-    '我', '你', '请', '帮我', '一下', '可以', '这个', '那个', '请问',
-  ])
-  return question
-    .split(/[\s，。！？、；：,.!?;:"'（）()《》<>【】]+/)
-    .filter((w) => w.length >= 2 && !stopwords.has(w))
-    .slice(0, 6)
+function extractKeywords(question: string, topN = 6): string[] {
+  const results = extract(question, topN)
+  return results.map(r => r.keyword)
 }
