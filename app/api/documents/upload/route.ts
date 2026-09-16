@@ -26,6 +26,24 @@ export async function POST(req: Request) {
   if (!doc) {
   throw new Error('插入文档失败：未返回数据')
   }
+  // 2. 🆕 传文件到 Supabase Storage
+  const path = `uploads/${doc.id}.${doc.file_type ?? 'bin'}`
+  const { error: uploadErr } = await supabaseAdmin.storage
+    .from('files')
+    .upload(path, file)
+
+  if (uploadErr) {
+    console.error('上传 Storage 失败:', uploadErr)
+    await supabaseAdmin.from('documents').update({ status: 'failed' }).eq('id', doc.id)
+    return NextResponse.json({ error: '文件上传失败' }, { status: 500 })
+  }
+
+  // 3. 🆕 回填 file_path
+  await supabaseAdmin
+    .from('documents')
+    .update({ file_path: path })
+    .eq('id', doc.id)
+
 
   const buffer = Buffer.from(await file.arrayBuffer())
 
