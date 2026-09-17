@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { rerankChunks } from '@/lib/services/reranker'
 
 import { generateAnswerStream, type ChatMessage } from '@/lib/services/chat-service'
-import { hybridSearch } from '@/lib/services/hybrid-service'
+import { HybridCandidate, hybridSearch } from '@/lib/services/hybrid-service'
 import { rewriteQuery } from '@/lib/services/query-rewriter'
 import { multiHopSearch } from '@/lib/services/planner'
 import { isComplexQuery } from '@/lib/services/router'

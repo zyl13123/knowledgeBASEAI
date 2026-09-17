@@ -1,9 +1,11 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { CONFIG } from '@/lib/config/constants'
 import type { ChatMessage } from './chat-service'
-import { load, extract } from '@node-rs/jieba'
-
-load()
+import { Jieba, TfIdf } from '@node-rs/jieba'
+import { dict, idf } from '@node-rs/jieba/dict'
+import 'server-only'
+const jieba = Jieba.withDict(dict)
+const tfidf = TfIdf.withDict(idf)
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
 
@@ -69,8 +71,8 @@ ${historyText}
   }
 }
 
-// 降级用：从 route.ts 搬过来的标点切词
-function extractKeywords(question: string, topN = 6): string[] {
-  const results = extract(question, topN)
-  return results.map(r => r.keyword)
+//降级
+export function extractKeywords(text: string, topK = 6): string[] {
+  const results = tfidf.extractKeywords(jieba, text, topK)
+  return results.map((r) => r.keyword)
 }

@@ -41,7 +41,7 @@ ${context}
   const model = genAI.getGenerativeModel({ model: CONFIG.CHAT_MODEL })
   const chat = model.startChat({
   systemInstruction: {
-    role: 'system',
+    role: 'user',
     parts: [{ text: systemInstruction }],   // ← 手动包成对象
   },
   history: geminiHistory,

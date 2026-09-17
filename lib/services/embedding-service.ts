@@ -15,15 +15,16 @@ export async function generateEmbedding(text: string): Promise<number[]> {
 
 // 批量向量化（上传文档用）
 export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
+  if (texts.length === 0) return []
+
   const model = genAI.getGenerativeModel({ model: CONFIG.EMBEDDING_MODEL })
 
-  const results = await Promise.all(
-    texts.map((text) =>
-      model.embedContent({
-        content: { parts: [{ text }], role: 'user' },
-        outputDimensionality: 768,
-      }as any)
-    )
-  )
-  return results.map((r) => r.embedding.values)
+  const result = await model.batchEmbedContents({
+    requests: texts.map((text) => ({
+      content: { parts: [{ text }], role: 'user' },
+      outputDimensionality: CONFIG.EMBEDDING_DIM,
+    })),
+  } as any)
+
+  return result.embeddings.map((e) => e.values)
 }
