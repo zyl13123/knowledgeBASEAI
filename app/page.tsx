@@ -36,17 +36,20 @@ interface SourceItem {
 interface Message {
   role: 'user' | 'assistant'
   content: string
-  sources?: SourceItem[]   // AI 回答引用的来源（绑定到消息，翻旧账不丢）
+  sources?: SourceItem[]
 }
 
 export default function Home() {
   // ===== 聊天状态 =====
-  const [messages, setMessages] = useState<Message[]>([])   // 全部聊天记录
-  const [question, setQuestion] = useState('')              // 输入框
-  const [asking, setAsking] = useState(false)               // 是否在等 AI
-  const [expandedMsg, setExpandedMsg] = useState<number | null>(null)  // 哪条消息的引用展开着（记录消息下标）
-  const bottomRef = useRef<HTMLDivElement>(null)            // 滚动到底部用
-  const chatScrollRef = useRef<HTMLDivElement>(null)        // 聊天区容器
+  const [messages, setMessages] = useState<Message[]>([])
+  const [question, setQuestion] = useState('')
+  const [asking, setAsking] = useState(false)
+  const [expandedMsg, setExpandedMsg] = useState<number | null>(null)
+  const bottomRef = useRef<HTMLDivElement>(null)
+  const chatScrollRef = useRef<HTMLDivElement>(null)
+
+  // 🆕 sessionId
+  const [sessionId, setSessionId] = useState('')
 
   // 文档列表
   const [documents, setDocuments] = useState<DocumentItem[]>([])
@@ -69,7 +72,30 @@ export default function Home() {
     })
   }, [messages, asking])
 
-  // 加载文档列表（自动轮询：有 processing 状态的文档时，每 3 秒刷新一次）
+  // 🆕 初始化 sessionId
+  useEffect(() => {
+    let id = localStorage.getItem('chat_session_id')
+    if (!id) {
+      id = crypto.randomUUID()
+      localStorage.setItem('chat_session_id', id)
+    }
+    setSessionId(id)
+  }, [])
+
+  // 🆕 sessionId 就绪后加载历史
+  useEffect(() => {
+    if (!sessionId) return
+    fetch(`/api/chat/history?sessionId=${sessionId}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.messages?.length) {
+          setMessages(data.messages)
+        }
+      })
+      .catch((err) => console.error('加载历史失败:', err))
+  }, [sessionId])
+
+  // 加载文档列表
   async function loadDocuments() {
     try {
       const res = await fetch('/api/documents')
@@ -77,7 +103,6 @@ export default function Home() {
       if (res.ok) {
         const docs = data.documents || []
         setDocuments(docs)
-        // 如果还有文档在处理中，3 秒后再查一次
         const hasProcessing = docs.some((doc: DocumentItem) => doc.status === 'processing')
         if (hasProcessing) {
           setTimeout(() => loadDocuments(), 3000)
@@ -94,7 +119,7 @@ export default function Home() {
     loadDocuments()
   }, [])
 
-  // 插入测试文本到知识库
+  // 插入测试文本
   async function handleSeed() {
     if (!seedTitle || !seedText) return
     setSeeding(true)
@@ -137,26 +162,23 @@ export default function Home() {
 
   // ===== 流式多轮提问 =====
   async function handleAsk() {
-    if (!question || asking) return
+    if (!question || asking || !sessionId) return   // 🆕 加 !sessionId
     const userMsg = question
     setQuestion('')
     setAsking(true)
 
-    // 1. 先把用户消息加进列表
     setMessages((prev) => [...prev, { role: 'user', content: userMsg }])
-    // 2. 加一条空白的 AI 消息，等会逐字填充（打字机效果）
     setMessages((prev) => [...prev, { role: 'assistant', content: '' }])
 
     try {
-      // 3. 带历史一起发（messages 是发之前的，正好是"过去的对话"）
+      // 🔄 body 改传 sessionId，不再传 history
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: userMsg, history: messages }),
+        body: JSON.stringify({ question: userMsg, sessionId }),
       })
       if (!res.ok || !res.body) throw new Error('请求失败')
 
-      // 4. 流式读取：reader 像水龙头，一段段读
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
@@ -166,18 +188,16 @@ export default function Home() {
         if (done) break
         buffer += decoder.decode(value, { stream: true })
 
-        // SSE 事件以空行 \n\n 分隔，逐个解析
         const events = buffer.split('\n\n')
-        buffer = events.pop() || ''   // 最后一段可能不完整，留到下次
+        buffer = events.pop() || ''
 
         for (const event of events) {
           if (!event.startsWith('data: ')) continue
-          const payload = event.slice(6)          // 去掉 "data: " 前缀
-          if (payload === '[DONE]') continue      // 结束标记
+          const payload = event.slice(6)
+          if (payload === '[DONE]') continue
 
           const data = JSON.parse(payload)
           if (data.text) {
-            // 5. 把新文本拼到最后一条 AI 消息上 → 打字机效果
             setMessages((prev) => {
               const copy = [...prev]
               const last = copy[copy.length - 1]
@@ -186,7 +206,6 @@ export default function Home() {
             })
           }
           if (data.sources) {
-            // 引用来源：绑定到当前这条 AI 消息（sources 在回答结束后单独推送）
             setMessages((prev) => {
               const copy = [...prev]
               const last = copy[copy.length - 1]
@@ -194,7 +213,7 @@ export default function Home() {
               return copy
             })
           }
-          if (data.error) {                            // 错误信息
+          if (data.error) {
             setMessages((prev) => {
               const copy = [...prev]
               const last = copy[copy.length - 1]
@@ -247,9 +266,8 @@ export default function Home() {
 
   return (
     <div className="h-screen flex flex-col bg-neutral-50 text-neutral-900">
-      {/* ===== 顶栏 ===== */}
+      {/* 顶栏（不动） */}
       <header className="h-14 shrink-0 border-b border-neutral-200 bg-white/80 backdrop-blur flex items-center px-4 md:px-6">
-        {/* 手机端：汉堡按钮 */}
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
           className="md:hidden p-1.5 mr-2 rounded-lg hover:bg-neutral-100"
@@ -277,9 +295,8 @@ export default function Home() {
         </div>
       </header>
 
-      {/* ===== 主体：左知识库 + 右聊天 ===== */}
       <div className="flex-1 flex overflow-hidden">
-        {/* -------- 左栏：知识库 -------- */}
+        {/* 左栏（不动） */}
         <aside className={`
           fixed md:relative inset-y-0 left-0 z-40 w-72 md:w-80 shrink-0
           border-r border-neutral-200 bg-white flex flex-col overflow-hidden
@@ -287,14 +304,12 @@ export default function Home() {
           ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
           md:translate-x-0
         `}>
-          {/* 上传区 */}
           <div className="p-4 border-b border-neutral-100">
             <div className="p-5 rounded-xl border-2 border-dashed border-neutral-200 hover:border-neutral-400 hover:bg-neutral-50 transition-colors">
               <UploadZone onUploaded={loadDocuments} />
             </div>
           </div>
 
-          {/* 插入文本（折叠） */}
           <div className="border-b border-neutral-100">
             <button
               onClick={() => setShowSeed(!showSeed)}
@@ -342,7 +357,6 @@ export default function Home() {
             )}
           </div>
 
-          {/* 文档列表 */}
           <div className="flex-1 overflow-y-auto p-4">
             <h2 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
               <FileText className="w-3.5 h-3.5" />
@@ -391,7 +405,6 @@ export default function Home() {
           </div>
         </aside>
 
-        {/* 手机端遮罩层 */}
         {mobileMenuOpen && (
           <div
             className="md:hidden fixed inset-0 z-30 bg-black/30"
@@ -399,9 +412,8 @@ export default function Home() {
           />
         )}
 
-        {/* -------- 右栏：聊天 -------- */}
+        {/* 右栏（渲染部分不动） */}
         <main className="flex-1 flex flex-col overflow-hidden bg-white">
-          {/* 聊天头部 */}
           <div className="shrink-0 px-4 md:px-8 py-4 border-b border-neutral-100 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-neutral-800 flex items-center gap-2">
               <span className="w-6 h-6 rounded-lg bg-neutral-100 flex items-center justify-center">
@@ -412,7 +424,6 @@ export default function Home() {
             <span className="text-xs text-neutral-400">{documents.length} 个文档</span>
           </div>
 
-          {/* 消息区 */}
           <div ref={chatScrollRef} className="flex-1 overflow-y-auto">
             <div className="max-w-5xl mx-auto px-4 md:px-8 py-6 md:py-10 space-y-6 md:space-y-8">
               {messages.length === 0 && (
@@ -440,7 +451,6 @@ export default function Home() {
 
               {messages.map((msg, i) => (
                 <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : ''}`}>
-                  {/* AI 消息：纯文本 + 头像（无边框卡片，GPT 风格） */}
                   {msg.role === 'assistant' && (
                     <div className="flex gap-4 w-full">
                       <div className="w-9 h-9 rounded-full bg-neutral-900 flex items-center justify-center shrink-0 mt-1">
@@ -450,7 +460,6 @@ export default function Home() {
                         <div className="prose-md text-neutral-800 text-base leading-7">
                           <ReactMarkdown>{msg.content}</ReactMarkdown>
                         </div>
-                        {/* 这条消息自己的引用来源：摘要行 + 点击展开 */}
                         {msg.sources && msg.sources.length > 0 && (
                           <div className="mt-3">
                             <button
@@ -490,7 +499,6 @@ export default function Home() {
                       </div>
                     </div>
                   )}
-                  {/* 用户消息：唯一的实体气泡，浅灰圆角靠右 */}
                   {msg.role === 'user' && (
                     <div className="max-w-[75%] px-5 py-3 bg-neutral-100 text-neutral-900 text-base leading-7 whitespace-pre-wrap rounded-[1.4rem] rounded-br-lg">
                       {msg.content}
@@ -515,7 +523,6 @@ export default function Home() {
             </div>
           </div>
 
-          {/* 输入区 */}
           <div className="shrink-0 px-4 md:px-8 py-3 md:py-4">
             <div className="max-w-5xl mx-auto">
               <div className="flex gap-2.5 items-end rounded-2xl border border-neutral-200 bg-neutral-50 px-4 py-2.5 focus-within:border-neutral-400 transition-colors">
