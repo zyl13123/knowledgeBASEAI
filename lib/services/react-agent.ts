@@ -4,7 +4,7 @@ import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai'
 import { CONFIG } from '@/lib/config/constants'
 import { hybridSearch, type HybridCandidate } from './hybrid-service'
 import { extractKeywords } from './query-rewriter'
-
+import { withRetry } from '@/lib/utils/retry'
 const apiKey = process.env.GEMINI_API_KEY
 if (!apiKey) throw new Error('GEMINI_API_KEY 未配置')
 const genAI = new GoogleGenerativeAI(apiKey)
@@ -118,7 +118,11 @@ export async function runReActAgent(
   let hops = 0
 
   // 第 1 轮：把用户问题发给 LLM
-  let result = await chat.sendMessage(question)
+  // 第 1 轮
+  let result = await withRetry(
+    () => chat.sendMessage(question),
+    { retries: 1, timeoutMs: 15000 }   // ReAct 调用更慢，超时设长点
+  )
 
   // 循环：只要 LLM 要求调工具，就执行并回传
   while (hops < CONFIG.AGENT_MAX_TURNS) {
@@ -144,7 +148,7 @@ export async function runReActAgent(
               name: call.name,
               response: { results: formatted },
             },
-          }
+          }     
         } catch (err) {
           console.error('ReAct 工具执行失败:', err)
           return {
@@ -160,7 +164,10 @@ export async function runReActAgent(
     )
 
     // 把工具结果送回 LLM，进入下一轮
-    result = await chat.sendMessage(responses)
+    result = await withRetry(
+      () => chat.sendMessage(responses),
+      { retries: 1, timeoutMs: 15000 }
+    )
     hops++
   }
 

@@ -2,7 +2,7 @@ import 'server-only'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { CONFIG } from '@/lib/config/constants'
 import type { HybridCandidate } from './hybrid-service'
-
+import { withRetry } from '@/lib/utils/retry'
 const apiKey = process.env.GEMINI_API_KEY
 if (!apiKey) {
   throw new Error('GEMINI_API_KEY 未配置')
@@ -38,8 +38,16 @@ export async function rerankChunks(
 
 文本块：
 ${chunkList}`
-
-    const result = await model.generateContent(prompt)
+    const result = await withRetry(
+      () => model.generateContent(prompt),
+      {
+        retries: 1,
+        timeoutMs: 8000,
+        onRetry: (err, attempt) => {
+          console.warn(`[reranker] 第 ${attempt} 次重试，原因:`, err)
+        },
+      }
+    )
     const text = result.response.text().trim()
 
     // 🔄 解析：优先 JSON，失败则正则兜底

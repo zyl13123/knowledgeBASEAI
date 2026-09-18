@@ -3,6 +3,7 @@ import { CONFIG } from '@/lib/config/constants'
 import type { ChatMessage } from './chat-service'
 import { Jieba, TfIdf } from '@node-rs/jieba'
 import { dict, idf } from '@node-rs/jieba/dict'
+import { withRetry } from '@/lib/utils/retry'
 import 'server-only'
 const jieba = Jieba.withDict(dict)
 const tfidf = TfIdf.withDict(idf)
@@ -45,8 +46,16 @@ ${historyText}
 
 只输出 JSON，不要输出其他内容：
 {"standalone_question": "改写后的完整问句", "keywords": ["关键词1", "关键词2"]}`
-
-    const result = await model.generateContent(prompt)
+    const result = await withRetry(
+      () => model.generateContent(prompt),
+      {
+        retries: 1,
+        timeoutMs: 8000,
+        onRetry: (err, attempt) => {
+          console.warn(`[rewriter] 第 ${attempt} 次重试，原因:`, err)
+        },
+      }
+    )
     const text = result.response.text().trim()
 
     // LLM 可能输出 markdown 代码块，去掉它
