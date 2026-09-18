@@ -25,6 +25,12 @@ export const CONFIG = {
   PLANNER_MAX_SUBQUERIES: 4,   // 最多拆几个子问题
   PLANNER_TOP_K: 3,            // 每个子问题检索后保留几块
   MULTI_HOP_MAX_CHUNKS: 9,     // 合并后最多保留几块（送进 reranker）
-  EMBEDDING_DIM: 768, 
+  EMBEDDING_DIM: 768,
+  
+    // ReAct 相关
+  ENABLE_REACT: true,          // 总开关，先关着，测好了再开
+  AGENT_MAX_TURNS: 5,           // 最大循环轮数
+  AGENT_TOOL_TOP_K: 5,          // 每次工具调用返回几个块
+  AGENT_CHUNK_PREVIEW: 500,     // 每个块截多少字符给 LLM
 
 }

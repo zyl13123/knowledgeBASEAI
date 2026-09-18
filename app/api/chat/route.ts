@@ -1,12 +1,13 @@
 import { NextRequest } from 'next/server'
 import { rerankChunks } from '@/lib/services/reranker'
-
+import { stripPrefix } from '@/lib/utils/text'   // 🆕 抽出共享
 import { generateAnswerStream, type ChatMessage } from '@/lib/services/chat-service'
 import { HybridCandidate, hybridSearch } from '@/lib/services/hybrid-service'
 import { rewriteQuery } from '@/lib/services/query-rewriter'
 import { multiHopSearch } from '@/lib/services/planner'
 import { isComplexQuery } from '@/lib/services/router'
-
+import { runReActAgent } from '@/lib/services/react-agent'
+import { CONFIG } from '@/lib/config/constants'
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,14 +27,15 @@ export async function POST(request: NextRequest) {
     const isComplex = isComplexQuery(standalone_question)
 
     let candidates: HybridCandidate[]
-
-    if (isComplex) {
-      // 复杂：拆子问题 → 并行检索 → 合并
-      candidates = await multiHopSearch(standalone_question, keywords)
+    if (CONFIG.ENABLE_REACT && isComplex) {
+  // 🆕 ReAct 路径
+      const { answer, chunks } = await runReActAgent(standalone_question)
+      return streamTextResponse(answer, chunks)
     } else {
-      // 简单：混合检索
-      candidates = await hybridSearch(standalone_question, keywords)
+      // 现有路径
+      candidates = isComplex? await multiHopSearch(standalone_question, keywords): await hybridSearch(standalone_question, keywords)
     }
+
 
     // 4. 重排
     const chunks = await rerankChunks(standalone_question, candidates)
@@ -107,3 +109,67 @@ function sseHeaders() {
 
 
 
+
+
+async function streamTextResponse(
+  answer: string,
+  chunks: HybridCandidate[]
+): Response {
+  const encoder = new TextEncoder()
+
+  const sseStream = new ReadableStream({
+    async start(controller) {   // 🆕 async
+      try {
+        // 按标点切（更自然），保底按 30 字
+        const segments = answer.split(/(?<=[。！？\n])/).filter(Boolean)
+        const pieces = segments.length > 1
+          ? segments
+          : Array.from({ length: Math.ceil(answer.length / 30) }, (_, i) =>
+              answer.slice(i * 30, (i + 1) * 30)
+            )
+
+        for (const text of pieces) {
+          if (!text) continue
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ text })}\n\n`)
+          )
+          // 🆕 模拟流式延迟
+          await new Promise((r) => setTimeout(r, 20))
+        }
+
+        // 去重 + 截断
+        const seen = new Set<string>()
+        const uniqueChunks = chunks.filter((c) => {
+          if (seen.has(c.id)) return false
+          seen.add(c.id)
+          return true
+        }).slice(0, 5)
+
+        const sources = uniqueChunks.map((c) => ({
+          document_title: c.document_title,
+          content: stripPrefix(c.content),   // 🆕 复用工具
+          similarity: c.similarity ?? 0,
+          hit_count: c.hit_count,
+        }))
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify({ sources })}\n\n`)
+        )
+
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+      } catch (err) {
+        console.error('ReAct 流式输出失败:', err)
+        try {
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ error: '输出失败' })}\n\n`)
+          )
+        } catch {
+          // 流已关闭
+        }
+      } finally {
+        controller.close()
+      }
+    },
+  })
+
+  return new Response(sseStream, { headers: sseHeaders() })
+}
